@@ -1,3 +1,4 @@
+(() => {
 const CONFIG = window.CONFIG;
 if (!CONFIG) {
   throw new Error("CONFIG not found. Ensure config.js is loaded before game.js.");
@@ -790,3 +791,4 @@ if (document.readyState === "loading") {
 } else {
   boot();
 }
+})();
