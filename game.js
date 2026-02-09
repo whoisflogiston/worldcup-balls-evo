@@ -3,16 +3,15 @@ if (!CONFIG) {
   throw new Error("CONFIG not found. Ensure config.js is loaded before game.js.");
 }
 
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
-const overlay = document.getElementById("overlay");
-const banner = document.getElementById("banner");
-const btnStart = document.getElementById("btn-start");
-const btnRestart = document.getElementById("btn-restart");
-
-const statTime = document.getElementById("stat-time");
-const statScore = document.getElementById("stat-score");
-const statMerges = document.getElementById("stat-merges");
+let canvas = null;
+let ctx = null;
+let overlay = null;
+let banner = null;
+let btnStart = null;
+let btnRestart = null;
+let statTime = null;
+let statScore = null;
+let statMerges = null;
 
 const STATE = {
   BOOT: "BOOT",
@@ -86,15 +85,18 @@ function logEvent(type, data = {}) {
 }
 
 function setOverlay(html) {
+  if (!overlay) return;
   overlay.innerHTML = html;
   overlay.classList.remove("hidden");
 }
 
 function hideOverlay() {
+  if (!overlay) return;
   overlay.classList.add("hidden");
 }
 
 function setBanner(text) {
+  if (!banner) return;
   banner.textContent = text;
   banner.classList.add("show");
   clearTimeout(banner._t);
@@ -580,6 +582,7 @@ function updateDanger(dt) {
 }
 
 function updateHUD() {
+  if (!statTime || !statScore || !statMerges) return;
   statTime.textContent = formatTime(elapsedSeconds());
   statScore.textContent = Math.floor(score);
   statMerges.textContent = merges;
@@ -611,6 +614,7 @@ function step(now) {
 }
 
 function render() {
+  if (!ctx) return;
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -737,22 +741,40 @@ function onPointerUp(event) {
   pointer.grabbedBall = null;
 }
 
-btnStart.addEventListener("click", () => {
-  startGame();
-});
-
-btnRestart.addEventListener("click", () => {
-  startGame();
-});
-
-canvas.addEventListener("pointerdown", onPointerDown);
-canvas.addEventListener("pointermove", onPointerMove);
-canvas.addEventListener("pointerup", onPointerUp);
-canvas.addEventListener("pointerleave", onPointerUp);
-
 window.addEventListener("resize", resizeCanvas);
 
+function bindElements() {
+  canvas = document.getElementById("game");
+  overlay = document.getElementById("overlay");
+  banner = document.getElementById("banner");
+  btnStart = document.getElementById("btn-start");
+  btnRestart = document.getElementById("btn-restart");
+  statTime = document.getElementById("stat-time");
+  statScore = document.getElementById("stat-score");
+  statMerges = document.getElementById("stat-merges");
+  ctx = canvas ? canvas.getContext("2d") : null;
+
+  if (btnStart) btnStart.addEventListener("click", startGame);
+  if (btnRestart) btnRestart.addEventListener("click", startGame);
+
+  if (canvas) {
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointerleave", onPointerUp);
+  }
+}
+
 function boot() {
+  if (!CONFIG) {
+    setOverlay("CONFIG не загружен. Проверьте, что config.js доступен.");
+    return;
+  }
+  bindElements();
+  if (!canvas || !ctx) {
+    setOverlay("Canvas недоступен в этом браузере.");
+    return;
+  }
   resizeCanvas();
   prepareSprites();
   state = STATE.MENU;
@@ -763,4 +785,8 @@ function boot() {
   });
 }
 
-boot();
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
