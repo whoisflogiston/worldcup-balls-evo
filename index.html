@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Эволюция мячей ЧМ 2026</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="hud">
+      <div class="hud-left">
+        <div class="title">Эволюция мячей ЧМ</div>
+        <div class="sub">Собери мяч 2026 и закати в ворота</div>
+      </div>
+      <div class="hud-right">
+        <div class="stat"><span id="stat-time">00:00</span><label>Время</label></div>
+        <div class="stat"><span id="stat-score">0</span><label>Очки</label></div>
+        <div class="stat"><span id="stat-merges">0</span><label>Слияния</label></div>
+      </div>
+    </header>
+
+    <main class="stage">
+      <canvas id="game" width="960" height="540"></canvas>
+      <div id="overlay" class="overlay hidden"></div>
+      <div id="banner" class="banner"></div>
+    </main>
+
+    <footer class="controls">
+      <button id="btn-start" class="primary">Старт</button>
+      <button id="btn-restart" class="ghost">Заново</button>
+      <div class="legend">
+        <span class="dot"></span>
+        Drag/свайп — толкать мячи. Удержание &gt; 2с — мяч выскальзывает.
+      </div>
+    </footer>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

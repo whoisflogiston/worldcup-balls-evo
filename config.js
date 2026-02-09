@@ -1,0 +1,71 @@
+const CONFIG = {
+  world: {
+    width: 960,
+    height: 540,
+    wallRestitution: 0.65,
+    ballRestitution: 0.55,
+    ballFriction: 0.35,
+    gravityY: 1.0,
+  },
+  spawn: {
+    intervalBase: 1.2,
+    difficultyStepSec: 20,
+    intervalDelta: 0.05,
+    intervalMin: 0.55,
+    alpha: 1.35,
+    baseWeight: 1,
+    maxAttempts: 5,
+  },
+  merge: {
+    holdTimeMs: 180,
+    cooldownMs: 250,
+    newBallDelayMs: 200,
+    maxMergesPerFrame: 2,
+    popY: -0.15,
+    velocityScale: 0.35,
+  },
+  danger: {
+    dangerYRatio: 0.85,
+    countLimit: 18,
+    holdSec: 3.0,
+  },
+  grab: {
+    maxGrabTimeSec: 2.0,
+    tapImpulse: 220,
+    dragForce: 16,
+  },
+  goal: {
+    holdMs: 400,
+  },
+  scoring: {
+    enabled: true,
+    base: 10,
+  },
+  tiers: [
+    { id: "T1", year: 1970, name: "Telstar", radius: 22, sprite: "telstar-1970" },
+    { id: "T2", year: 1978, name: "Tango", radius: 23, sprite: "tango-1978" },
+    { id: "T3", year: 1986, name: "Azteca", radius: 24, sprite: "azteca-1986" },
+    { id: "T4", year: 1990, name: "Etrusco Unico", radius: 25, sprite: "etrusco-1990" },
+    { id: "T5", year: 2002, name: "Fevernova", radius: 26, sprite: "fevernova-2002" },
+    { id: "T6", year: 2006, name: "Teamgeist", radius: 27, sprite: "teamgeist-2006" },
+    { id: "T7", year: 2010, name: "Jabulani", radius: 28, sprite: "jabulani-2010" },
+    { id: "T8", year: 2014, name: "Brazuca", radius: 29, sprite: "brazuca-2014" },
+    { id: "T9", year: 2018, name: "Telstar 18", radius: 30, sprite: "telstar-2018" },
+    { id: "T10", year: 2022, name: "Al Rihla", radius: 32, sprite: "al-rihla-2022" },
+    { id: "T11", year: 2026, name: "WC-2026", radius: 34, sprite: "wc-2026" },
+  ],
+  mergeRules: {
+    T1: 2,
+    T2: 2,
+    T3: 2,
+    T4: 2,
+    T5: 2,
+    T6: 2,
+    T7: 2,
+    T8: 3,
+    T9: 3,
+    T10: 3,
+  },
+};
+
+window.CONFIG = CONFIG;
