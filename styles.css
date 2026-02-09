@@ -20,6 +20,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  overscroll-behavior: none;
 }
 
 #app {
@@ -85,6 +86,7 @@ body {
   height: 100%;
   display: block;
   background: radial-gradient(120% 80% at 50% 0%, rgba(32, 58, 94, 0.6), rgba(10, 19, 34, 0.9));
+  touch-action: none;
 }
 
 .overlay {

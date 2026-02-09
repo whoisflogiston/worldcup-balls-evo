@@ -49,8 +49,9 @@ let goalHold = 0;
 let goalRect = null;
 let mergeEventsThisFrame = 0;
 let ballIdCounter = 1;
-let scaleX = 1;
-let scaleY = 1;
+let viewScale = 1;
+let viewOffsetX = 0;
+let viewOffsetY = 0;
 
 const pointer = {
   active: false,
@@ -109,9 +110,14 @@ function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(rect.width * dpr);
   canvas.height = Math.round(rect.height * dpr);
-  scaleX = rect.width / world.width;
-  scaleY = rect.height / world.height;
-  ctx.setTransform(dpr * scaleX, 0, 0, dpr * scaleY, 0, 0);
+  const scaleX = rect.width / world.width;
+  const scaleY = rect.height / world.height;
+  viewScale = Math.min(scaleX, scaleY);
+  const viewWidth = world.width * viewScale;
+  const viewHeight = world.height * viewScale;
+  viewOffsetX = (rect.width - viewWidth) / 2;
+  viewOffsetY = (rect.height - viewHeight) / 2;
+  ctx.setTransform(dpr * viewScale, 0, 0, dpr * viewScale, dpr * viewOffsetX, dpr * viewOffsetY);
 }
 
 function createSprite(tier, index) {
@@ -374,7 +380,7 @@ function updateContacts(dt) {
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const dist = Math.hypot(dx, dy);
-      if (dist < a.radius + b.radius + 0.5) {
+      if (dist < a.radius + b.radius + 1.5) {
         const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
         touching.add(key);
         const entry = contactMap.get(key);
@@ -684,8 +690,8 @@ function applyGrabForce(dt) {
 function getPointerPos(event) {
   const rect = canvas.getBoundingClientRect();
   return {
-    x: ((event.clientX - rect.left) / rect.width) * world.width,
-    y: ((event.clientY - rect.top) / rect.height) * world.height,
+    x: (event.clientX - rect.left - viewOffsetX) / viewScale,
+    y: (event.clientY - rect.top - viewOffsetY) / viewScale,
   };
 }
 
@@ -699,6 +705,7 @@ function findBallAt(x, y) {
 }
 
 function onPointerDown(event) {
+  event.preventDefault();
   if (state !== STATE.PLAYING && state !== STATE.FINAL) return;
   pointer.active = true;
   const pos = getPointerPos(event);
@@ -716,6 +723,7 @@ function onPointerDown(event) {
 }
 
 function onPointerMove(event) {
+  event.preventDefault();
   if (!pointer.active) return;
   const pos = getPointerPos(event);
   pointer.x = pos.x;
@@ -725,6 +733,7 @@ function onPointerMove(event) {
 }
 
 function onPointerUp(event) {
+  event.preventDefault();
   if (!pointer.active) return;
   const pos = getPointerPos(event);
   const elapsed = performance.now() - pointer.startTime;
@@ -759,10 +768,10 @@ function bindElements() {
   if (btnRestart) btnRestart.addEventListener("click", startGame);
 
   if (canvas) {
-    canvas.addEventListener("pointerdown", onPointerDown);
-    canvas.addEventListener("pointermove", onPointerMove);
-    canvas.addEventListener("pointerup", onPointerUp);
-    canvas.addEventListener("pointerleave", onPointerUp);
+    canvas.addEventListener("pointerdown", onPointerDown, { passive: false });
+    canvas.addEventListener("pointermove", onPointerMove, { passive: false });
+    canvas.addEventListener("pointerup", onPointerUp, { passive: false });
+    canvas.addEventListener("pointerleave", onPointerUp, { passive: false });
   }
 }
 
