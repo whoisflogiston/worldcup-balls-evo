@@ -561,7 +561,7 @@ function checkGoal(dt) {
 
 function updateDanger(dt) {
   const dangerY = getDangerY();
-  const count = balls.filter((b) => b.y >= dangerY).length;
+  const count = balls.filter((b) => !b.isHeld && b.y <= dangerY).length;
   if (count >= CONFIG.danger.countLimit) {
     if (!dangerActive) {
       dangerActive = true;

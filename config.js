@@ -27,7 +27,7 @@ const CONFIG = {
   },
   danger: {
     dangerYRatio: 0.5,
-    countLimit: 18,
+    countLimit: 1,
     holdSec: 3.0,
   },
   grab: {
