@@ -26,6 +26,8 @@ const STATE = {
 const telemetry = [];
 
 const world = {
+  baseWidth: CONFIG.world.width,
+  baseHeight: CONFIG.world.height,
   width: CONFIG.world.width,
   height: CONFIG.world.height,
   gravity: CONFIG.world.gravityY * 900,
@@ -38,7 +40,6 @@ let state = STATE.BOOT;
 let balls = [];
 let lastTime = 0;
 let startTime = 0;
-let spawnTimer = 0;
 let score = 0;
 let merges = 0;
 let maxUnlockedIndex = 0;
@@ -50,8 +51,9 @@ let goalRect = null;
 let mergeEventsThisFrame = 0;
 let ballIdCounter = 1;
 let viewScale = 1;
-let viewOffsetX = 0;
-let viewOffsetY = 0;
+let spawnLineY = 0;
+let ballScale = 1;
+let nextSpawnTimeout = null;
 
 const pointer = {
   active: false,
@@ -65,7 +67,6 @@ const pointer = {
   moved: false,
 };
 
-const contactMap = new Map();
 const spriteMap = new Map();
 const palette = [
   "#e1e5f2",
@@ -110,18 +111,40 @@ function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(rect.width * dpr);
   canvas.height = Math.round(rect.height * dpr);
-  const scaleX = rect.width / world.width;
-  const scaleY = rect.height / world.height;
-  viewScale = Math.min(scaleX, scaleY);
-  const viewWidth = world.width * viewScale;
-  const viewHeight = world.height * viewScale;
-  viewOffsetX = (rect.width - viewWidth) / 2;
-  viewOffsetY = (rect.height - viewHeight) / 2;
-  ctx.setTransform(dpr * viewScale, 0, 0, dpr * viewScale, dpr * viewOffsetX, dpr * viewOffsetY);
+  const prevWidth = world.width;
+  const prevHeight = world.height;
+  world.width = rect.width;
+  world.height = rect.height;
+  viewScale = world.width / world.baseWidth;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  ballScale = rect.width <= 720 ? 2 : 1;
+  const sizeScale = world.width / world.baseWidth;
+  spawnLineY = Math.max(20, (maxBaseRadius() * sizeScale * ballScale) + CONFIG.spawn.spawnLineOffset);
+  world.gravity = CONFIG.world.gravityY * 900 * (world.height / world.baseHeight);
+
+  if (prevWidth && prevHeight) {
+    const sx = world.width / prevWidth;
+    const sy = world.height / prevHeight;
+    for (const ball of balls) {
+      ball.x *= sx;
+      ball.y *= sy;
+      ball.vx *= sx;
+      ball.vy *= sy;
+      ball.radius = ball.baseRadius * sizeScale * ballScale;
+    }
+  }
+
+  prepareSprites();
 }
 
-function createSprite(tier, index) {
-  const size = tier.radius * 2 + 8;
+function maxBaseRadius() {
+  return Math.max(...CONFIG.tiers.map((t) => t.radius));
+}
+
+function createSprite(tier, index, scale) {
+  const radius = tier.radius * scale;
+  const size = radius * 2 + 8;
   const sprite = document.createElement("canvas");
   sprite.width = size;
   sprite.height = size;
@@ -129,20 +152,20 @@ function createSprite(tier, index) {
   const cx = size / 2;
   const cy = size / 2;
 
-  const gradient = sctx.createRadialGradient(cx - 4, cy - 6, tier.radius * 0.2, cx, cy, tier.radius + 6);
+  const gradient = sctx.createRadialGradient(cx - 4, cy - 6, radius * 0.2, cx, cy, radius + 6);
   gradient.addColorStop(0, "#ffffff");
   gradient.addColorStop(1, palette[index % palette.length]);
 
   sctx.fillStyle = gradient;
   sctx.beginPath();
-  sctx.arc(cx, cy, tier.radius, 0, Math.PI * 2);
+  sctx.arc(cx, cy, radius, 0, Math.PI * 2);
   sctx.fill();
 
   sctx.strokeStyle = "rgba(0,0,0,0.2)";
   sctx.lineWidth = 2;
   for (let i = 0; i < 6; i += 1) {
     sctx.beginPath();
-    sctx.arc(cx, cy, tier.radius - 6, (i * Math.PI) / 3, ((i + 0.5) * Math.PI) / 3);
+    sctx.arc(cx, cy, radius - 6, (i * Math.PI) / 3, ((i + 0.5) * Math.PI) / 3);
     sctx.stroke();
   }
 
@@ -157,8 +180,9 @@ function createSprite(tier, index) {
 }
 
 function prepareSprites() {
+  const scale = (world.width / world.baseWidth) * ballScale;
   CONFIG.tiers.forEach((tier, index) => {
-    spriteMap.set(tier.id, createSprite(tier, index));
+    spriteMap.set(tier.id, createSprite(tier, index, scale));
   });
 }
 
@@ -166,7 +190,6 @@ function resetGame() {
   balls = [];
   lastTime = performance.now();
   startTime = performance.now();
-  spawnTimer = 0;
   score = 0;
   merges = 0;
   maxUnlockedIndex = 0;
@@ -177,7 +200,10 @@ function resetGame() {
   goalRect = null;
   mergeEventsThisFrame = 0;
   ballIdCounter = 1;
-  contactMap.clear();
+  if (nextSpawnTimeout) {
+    clearTimeout(nextSpawnTimeout);
+    nextSpawnTimeout = null;
+  }
   logEvent("game_start");
 }
 
@@ -186,6 +212,7 @@ function startGame() {
   state = STATE.PLAYING;
   hideOverlay();
   setBanner("Старт!");
+  spawnHeldBall();
 }
 
 function endGame(reason) {
@@ -217,44 +244,27 @@ function formatTime(sec) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function spawnInterval() {
-  const steps = Math.floor(elapsedSeconds() / CONFIG.spawn.difficultyStepSec);
-  return Math.max(
-    CONFIG.spawn.intervalMin,
-    CONFIG.spawn.intervalBase - steps * CONFIG.spawn.intervalDelta
-  );
-}
-
 function selectTierIndex() {
   const maxIndex = maxUnlockedIndex;
-  let total = 0;
-  const weights = [];
-  for (let i = 0; i <= maxIndex; i += 1) {
-    const w = CONFIG.spawn.baseWeight / Math.pow(i + 1, CONFIG.spawn.alpha);
-    weights.push(w);
-    total += w;
-  }
-  let pick = Math.random() * total;
-  for (let i = 0; i < weights.length; i += 1) {
-    pick -= weights[i];
-    if (pick <= 0) return i;
-  }
-  return 0;
+  return Math.floor(Math.random() * (maxIndex + 1));
 }
 
 function createBall(tierIndex, position, velocity = { x: 0, y: 0 }) {
   const tier = CONFIG.tiers[tierIndex];
+  const sizeScale = (world.width / world.baseWidth) * ballScale;
   const ball = {
     id: ballIdCounter++,
     tierIndex,
     tierId: tier.id,
-    radius: tier.radius,
+    baseRadius: tier.radius,
+    radius: tier.radius * sizeScale,
     x: position.x,
     y: position.y,
     vx: velocity.x,
     vy: velocity.y,
     lockedForMergeUntil: 0,
     createdAt: performance.now(),
+    isHeld: false,
   };
   balls.push(ball);
   logEvent("spawn_ball", { tierId: tier.id });
@@ -273,39 +283,35 @@ function canPlaceAt(x, y, radius) {
   return true;
 }
 
-function spawnBall() {
+function spawnHeldBall() {
+  if (state !== STATE.PLAYING && state !== STATE.FINAL) return;
+  if (balls.some((b) => b.isHeld)) return;
   const tierIndex = selectTierIndex();
   const tier = CONFIG.tiers[tierIndex];
-  const maxRadius = Math.max(...CONFIG.tiers.map((t) => t.radius));
-  const margin = maxRadius + 6;
+  const tierRadius = tier.radius * (world.width / world.baseWidth) * ballScale;
+  const margin = tierRadius + 8;
   let x = margin + Math.random() * (world.width - margin * 2);
-  let y = -tier.radius - 10;
-  let placed = canPlaceAt(x, y, tier.radius);
+  let y = spawnLineY;
+  let placed = canPlaceAt(x, y, tierRadius);
   for (let i = 0; i < CONFIG.spawn.maxAttempts && !placed; i += 1) {
-    x += (Math.random() - 0.5) * 60;
+    x += (Math.random() - 0.5) * 80;
     x = Math.max(margin, Math.min(world.width - margin, x));
-    placed = canPlaceAt(x, y, tier.radius);
+    placed = canPlaceAt(x, y, tierRadius);
   }
-  let vx = 0;
-  if (!placed) {
-    vx = (Math.random() > 0.5 ? 1 : -1) * 120;
-  }
-  createBall(tierIndex, { x, y }, { x: vx, y: 0 });
-}
-
-function updateSpawn(dt) {
-  if (state !== STATE.PLAYING && state !== STATE.FINAL) return;
-  spawnTimer += dt;
-  const interval = spawnInterval();
-  if (spawnTimer >= interval) {
-    spawnTimer = 0;
-    spawnBall();
-  }
+  const ball = createBall(tierIndex, { x, y }, { x: 0, y: 0 });
+  ball.isHeld = true;
+  ball.vx = 0;
+  ball.vy = 0;
 }
 
 function applyForces(dt) {
   for (const ball of balls) {
-    ball.vy += world.gravity * dt;
+    if (!ball.isHeld) {
+      ball.vy += world.gravity * dt;
+    } else {
+      ball.vx = 0;
+      ball.vy = 0;
+    }
     ball.vx *= 1 - Math.min(1, world.ballFriction * dt);
     ball.vy *= 1 - Math.min(1, world.ballFriction * dt);
   }
@@ -319,6 +325,7 @@ function integrate(dt) {
 }
 
 function resolveWall(ball) {
+  if (ball.isHeld) return;
   const r = ball.radius;
   if (ball.x - r < 0) {
     ball.x = r;
@@ -336,13 +343,16 @@ function resolveWall(ball) {
   }
 }
 
-function resolveBallCollision(a, b) {
+function resolveBallCollision(a, b, now) {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const dist = Math.hypot(dx, dy);
   const minDist = a.radius + b.radius;
   if (dist === 0 || dist >= minDist) {
     return false;
+  }
+  if (a.tierIndex === b.tierIndex && mergeEligible(a, now) && mergeEligible(b, now)) {
+    return true;
   }
   const nx = dx / dist;
   const ny = dy / dist;
@@ -371,47 +381,23 @@ function resolveBallCollision(a, b) {
   return true;
 }
 
-function updateContacts(dt) {
-  const touching = new Set();
-  for (let i = 0; i < balls.length; i += 1) {
-    const a = balls[i];
-    for (let j = i + 1; j < balls.length; j += 1) {
-      const b = balls[j];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist < a.radius + b.radius + 1.5) {
-        const key = a.id < b.id ? `${a.id}|${b.id}` : `${b.id}|${a.id}`;
-        touching.add(key);
-        const entry = contactMap.get(key);
-        if (entry) {
-          entry.duration += dt * 1000;
-        } else {
-          contactMap.set(key, { duration: dt * 1000, aId: a.id, bId: b.id });
-        }
-      }
-    }
-  }
-  for (const key of contactMap.keys()) {
-    if (!touching.has(key)) {
-      contactMap.delete(key);
-    }
-  }
-}
-
 function buildContactGraph(tierIndex) {
-  const nodes = balls.filter((b) => b.tierIndex === tierIndex);
+  const nodes = balls.filter((b) => b.tierIndex === tierIndex && !b.isHeld);
   const adjacency = new Map();
   for (const ball of nodes) adjacency.set(ball.id, new Set());
 
-  for (const [key, entry] of contactMap.entries()) {
-    const a = balls.find((b) => b.id === entry.aId);
-    const b = balls.find((b) => b.id === entry.bId);
-    if (!a || !b) continue;
-    if (a.tierIndex !== tierIndex || b.tierIndex !== tierIndex) continue;
-    if (entry.duration < CONFIG.merge.holdTimeMs) continue;
-    adjacency.get(a.id).add(b.id);
-    adjacency.get(b.id).add(a.id);
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const a = nodes[i];
+      const b = nodes[j];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= a.radius + b.radius + 1.5) {
+        adjacency.get(a.id).add(b.id);
+        adjacency.get(b.id).add(a.id);
+      }
+    }
   }
 
   return { nodes, adjacency };
@@ -568,7 +554,7 @@ function checkGoal(dt) {
 }
 
 function updateDanger(dt) {
-  const dangerY = world.height * CONFIG.danger.dangerYRatio;
+  const dangerY = Math.min(world.height - 40, spawnLineY + world.height * CONFIG.danger.dangerYRatio);
   const count = balls.filter((b) => b.y >= dangerY).length;
   if (count >= CONFIG.danger.countLimit) {
     if (!dangerActive) {
@@ -600,17 +586,18 @@ function step(now) {
   const dt = Math.min(0.033, Math.max(0.001, dtRaw));
   lastTime = now;
   if (state === STATE.PLAYING || state === STATE.FINAL) {
-    updateSpawn(dt);
     applyForces(dt);
     applyGrabForce(dt);
     integrate(dt);
     for (const ball of balls) resolveWall(ball);
     for (let i = 0; i < balls.length; i += 1) {
       for (let j = i + 1; j < balls.length; j += 1) {
-        resolveBallCollision(balls[i], balls[j]);
+        const a = balls[i];
+        const b = balls[j];
+        if (a.isHeld || b.isHeld) continue;
+        resolveBallCollision(a, b, now);
       }
     }
-    updateContacts(dt);
     performMerges(now);
     updateDanger(dt);
     checkGoal(dt);
@@ -626,7 +613,7 @@ function render() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
-  const dangerY = world.height * CONFIG.danger.dangerYRatio;
+  const dangerY = Math.min(world.height - 40, spawnLineY + world.height * CONFIG.danger.dangerYRatio);
 
   ctx.save();
   ctx.strokeStyle = dangerActive ? "rgba(255, 77, 77, 0.9)" : "rgba(255, 77, 77, 0.4)";
@@ -635,6 +622,15 @@ function render() {
   ctx.beginPath();
   ctx.moveTo(0, dangerY);
   ctx.lineTo(world.width, dangerY);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+  ctx.setLineDash([8, 8]);
+  ctx.beginPath();
+  ctx.moveTo(0, spawnLineY);
+  ctx.lineTo(world.width, spawnLineY);
   ctx.stroke();
   if (dangerActive) {
     const remaining = Math.max(0, CONFIG.danger.holdSec - dangerTimer);
@@ -675,6 +671,14 @@ function render() {
 function applyGrabForce(dt) {
   if (!pointer.grabbedBall) return;
   const ball = pointer.grabbedBall;
+  if (ball.isHeld) {
+    const r = ball.radius;
+    ball.x = Math.max(r, Math.min(world.width - r, pointer.x));
+    ball.y = spawnLineY;
+    ball.vx = 0;
+    ball.vy = 0;
+    return;
+  }
   const now = performance.now();
   if (now - pointer.grabStart > CONFIG.grab.maxGrabTimeSec * 1000) {
     ball.vy += 180;
@@ -690,8 +694,8 @@ function applyGrabForce(dt) {
 function getPointerPos(event) {
   const rect = canvas.getBoundingClientRect();
   return {
-    x: (event.clientX - rect.left - viewOffsetX) / viewScale,
-    y: (event.clientY - rect.top - viewOffsetY) / viewScale,
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
   };
 }
 
@@ -737,6 +741,21 @@ function onPointerUp(event) {
   if (!pointer.active) return;
   const pos = getPointerPos(event);
   const elapsed = performance.now() - pointer.startTime;
+  if (pointer.grabbedBall && pointer.grabbedBall.isHeld) {
+    const ball = pointer.grabbedBall;
+    ball.isHeld = false;
+    const dx = pos.x - pointer.startX;
+    const vx = Math.max(-450, Math.min(450, (dx / Math.max(1, elapsed)) * 600));
+    ball.vx = vx;
+    ball.vy = 0;
+    if (nextSpawnTimeout) clearTimeout(nextSpawnTimeout);
+    nextSpawnTimeout = setTimeout(() => {
+      spawnHeldBall();
+    }, 180);
+    pointer.active = false;
+    pointer.grabbedBall = null;
+    return;
+  }
   if (!pointer.moved && elapsed < 200) {
     const ball = findBallAt(pos.x, pos.y);
     if (ball) {

@@ -18,17 +18,18 @@ body {
   color: var(--text);
   height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: stretch;
   overscroll-behavior: none;
 }
 
 #app {
   width: min(1100px, 96vw);
-  height: min(760px, 94vh);
+  height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 12px;
+  margin: 0 auto;
 }
 
 .hud {
@@ -183,7 +184,15 @@ button.ghost {
   }
 
   .controls {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .legend {
+    width: 100%;
   }
 }
