@@ -55,6 +55,10 @@ let spawnLineY = 0;
 let ballScale = 1;
 let nextSpawnTimeout = null;
 
+function getDangerY() {
+  return Math.min(world.height - 40, spawnLineY + world.height * CONFIG.danger.dangerYRatio);
+}
+
 const pointer = {
   active: false,
   x: 0,
@@ -554,7 +558,7 @@ function checkGoal(dt) {
 }
 
 function updateDanger(dt) {
-  const dangerY = Math.min(world.height - 40, spawnLineY + world.height * CONFIG.danger.dangerYRatio);
+  const dangerY = getDangerY();
   const count = balls.filter((b) => b.y >= dangerY).length;
   if (count >= CONFIG.danger.countLimit) {
     if (!dangerActive) {
@@ -613,7 +617,7 @@ function render() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
-  const dangerY = Math.min(world.height - 40, spawnLineY + world.height * CONFIG.danger.dangerYRatio);
+  const dangerY = getDangerY();
 
   ctx.save();
   ctx.strokeStyle = dangerActive ? "rgba(255, 77, 77, 0.9)" : "rgba(255, 77, 77, 0.4)";
@@ -720,7 +724,8 @@ function onPointerDown(event) {
   pointer.startTime = performance.now();
   pointer.moved = false;
   const ball = findBallAt(pos.x, pos.y);
-  if (ball) {
+  const dangerY = getDangerY();
+  if (ball && (ball.isHeld || ball.y <= dangerY)) {
     pointer.grabbedBall = ball;
     pointer.grabStart = performance.now();
   }
