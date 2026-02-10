@@ -56,7 +56,7 @@ let ballScale = 1;
 let nextSpawnTimeout = null;
 
 function getDangerY() {
-  return Math.min(world.height - 40, spawnLineY + world.height * CONFIG.danger.dangerYRatio);
+  return world.height * CONFIG.danger.dangerYRatio;
 }
 
 const pointer = {
@@ -814,7 +814,7 @@ function boot() {
   resizeCanvas();
   prepareSprites();
   state = STATE.MENU;
-  setOverlay("Нажмите <strong>Старт</strong> для начала игры");
+  setOverlay("Нажмите&nbsp;<strong>Старт</strong>&nbsp;для&nbsp;начала&nbsp;игры");
   requestAnimationFrame((t) => {
     lastTime = t;
     requestAnimationFrame(step);

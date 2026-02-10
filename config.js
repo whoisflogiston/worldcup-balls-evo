@@ -26,7 +26,7 @@ const CONFIG = {
     velocityScale: 0.35,
   },
   danger: {
-    dangerYRatio: 0.2,
+    dangerYRatio: 0.5,
     countLimit: 18,
     holdSec: 3.0,
   },
