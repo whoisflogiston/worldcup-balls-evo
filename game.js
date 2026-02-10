@@ -39,7 +39,7 @@ const world = {
 let state = STATE.BOOT;
 let balls = [];
 let lastTime = 0;
-let startTime = 0;
+let startTime = null;
 let score = 0;
 let merges = 0;
 let maxUnlockedIndex = 0;
@@ -193,7 +193,7 @@ function prepareSprites() {
 function resetGame() {
   balls = [];
   lastTime = performance.now();
-  startTime = performance.now();
+  startTime = null;
   score = 0;
   merges = 0;
   maxUnlockedIndex = 0;
@@ -213,6 +213,7 @@ function resetGame() {
 
 function startGame() {
   resetGame();
+  startTime = performance.now();
   state = STATE.PLAYING;
   hideOverlay();
   setBanner("Старт!");
@@ -239,6 +240,7 @@ function successGame() {
 }
 
 function elapsedSeconds() {
+  if (!startTime) return 0;
   return (performance.now() - startTime) / 1000;
 }
 
@@ -812,7 +814,7 @@ function boot() {
   resizeCanvas();
   prepareSprites();
   state = STATE.MENU;
-  setOverlay("Нажмите <strong>Старт</strong> чтобы начать");
+  setOverlay("Нажмите <strong>Старт</strong> для начала игры");
   requestAnimationFrame((t) => {
     lastTime = t;
     requestAnimationFrame(step);
