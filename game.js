@@ -65,26 +65,20 @@ const pointer = {
   y: 0,
   startX: 0,
   startY: 0,
+  prevX: 0,
+  prevY: 0,
+  prevMoveTime: 0,
+  lastX: 0,
+  lastY: 0,
   startTime: 0,
+  lastMoveTime: 0,
   grabbedBall: null,
   grabStart: 0,
   moved: false,
 };
 
 const spriteMap = new Map();
-const palette = [
-  "#e1e5f2",
-  "#f2c14e",
-  "#f25f5c",
-  "#70c1b3",
-  "#247ba0",
-  "#ffe066",
-  "#f18f01",
-  "#99d98c",
-  "#8ecae6",
-  "#e07a5f",
-  "#6d597a",
-];
+let mergeFx = [];
 
 function logEvent(type, data = {}) {
   telemetry.push({ type, data, time: performance.now() });
@@ -122,7 +116,7 @@ function resizeCanvas() {
   viewScale = world.width / world.baseWidth;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  ballScale = rect.width <= 720 ? 2 : 1;
+  ballScale = rect.width <= 720 ? 4 : 2;
   const sizeScale = world.width / world.baseWidth;
   spawnLineY = Math.max(20, (maxBaseRadius() * sizeScale * ballScale) + CONFIG.spawn.spawnLineOffset);
   world.gravity = CONFIG.world.gravityY * 900 * (world.height / world.baseHeight);
@@ -146,47 +140,12 @@ function maxBaseRadius() {
   return Math.max(...CONFIG.tiers.map((t) => t.radius));
 }
 
-function createSprite(tier, index, scale) {
-  const radius = tier.radius * scale;
-  const size = radius * 2 + 8;
-  const sprite = document.createElement("canvas");
-  sprite.width = size;
-  sprite.height = size;
-  const sctx = sprite.getContext("2d");
-  const cx = size / 2;
-  const cy = size / 2;
-
-  const gradient = sctx.createRadialGradient(cx - 4, cy - 6, radius * 0.2, cx, cy, radius + 6);
-  gradient.addColorStop(0, "#ffffff");
-  gradient.addColorStop(1, palette[index % palette.length]);
-
-  sctx.fillStyle = gradient;
-  sctx.beginPath();
-  sctx.arc(cx, cy, radius, 0, Math.PI * 2);
-  sctx.fill();
-
-  sctx.strokeStyle = "rgba(0,0,0,0.2)";
-  sctx.lineWidth = 2;
-  for (let i = 0; i < 6; i += 1) {
-    sctx.beginPath();
-    sctx.arc(cx, cy, radius - 6, (i * Math.PI) / 3, ((i + 0.5) * Math.PI) / 3);
-    sctx.stroke();
-  }
-
-  sctx.fillStyle = "rgba(0,0,0,0.55)";
-  sctx.font = "bold 11px 'Alegreya Sans', sans-serif";
-  sctx.textAlign = "center";
-  sctx.fillText(String(tier.year), cx, cy + 4);
-  sctx.font = "600 9px 'Alegreya Sans', sans-serif";
-  sctx.fillText(tier.name, cx, cy + 16);
-
-  return sprite;
-}
-
 function prepareSprites() {
-  const scale = (world.width / world.baseWidth) * ballScale;
-  CONFIG.tiers.forEach((tier, index) => {
-    spriteMap.set(tier.id, createSprite(tier, index, scale));
+  CONFIG.tiers.forEach((tier) => {
+    if (spriteMap.has(tier.id)) return;
+    const img = new Image();
+    img.src = encodeURI(tier.sprite);
+    spriteMap.set(tier.id, img);
   });
 }
 
@@ -204,6 +163,7 @@ function resetGame() {
   goalRect = null;
   mergeEventsThisFrame = 0;
   ballIdCounter = 1;
+  mergeFx = [];
   if (nextSpawnTimeout) {
     clearTimeout(nextSpawnTimeout);
     nextSpawnTimeout = null;
@@ -271,6 +231,8 @@ function createBall(tierIndex, position, velocity = { x: 0, y: 0 }) {
     lockedForMergeUntil: 0,
     createdAt: performance.now(),
     isHeld: false,
+    pulseStart: 0,
+    pulseEnd: 0,
   };
   balls.push(ball);
   logEvent("spawn_ball", { tierId: tier.id });
@@ -491,6 +453,14 @@ function performMerges(now) {
         x: avgVx * CONFIG.merge.velocityScale,
         y: avgVy * CONFIG.merge.velocityScale + CONFIG.merge.popY * 100,
       });
+      newBall.pulseStart = now;
+      newBall.pulseEnd = now + CONFIG.merge.pulseMs;
+      mergeFx.push({
+        x: avgX,
+        y: avgY,
+        start: now,
+        end: now + CONFIG.merge.pulseMs,
+      });
 
       logEvent("merge", {
         fromTier: CONFIG.tiers[tierIndex].id,
@@ -615,16 +585,29 @@ function step(now) {
 
 function render() {
   if (!ctx) return;
+  const now = performance.now();
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
   const dangerY = getDangerY();
+  const fieldCenterX = world.width * 0.5;
+  const fieldCenterY = world.height * 0.5;
+  const centerCircleRadius = Math.min(world.width, world.height) * 0.2;
 
   ctx.save();
-  ctx.strokeStyle = dangerActive ? "rgba(255, 77, 77, 0.9)" : "rgba(255, 77, 77, 0.4)";
-  ctx.lineWidth = dangerActive ? 3 : 2;
-  ctx.setLineDash(dangerActive ? [6, 6] : [12, 8]);
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.36)";
+  ctx.lineWidth = 3;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(fieldCenterX, fieldCenterY, centerCircleRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = dangerActive ? "rgba(255, 77, 77, 0.95)" : "rgba(255, 255, 255, 0.95)";
+  ctx.lineWidth = dangerActive ? 7 : 6;
+  ctx.setLineDash([]);
   ctx.beginPath();
   ctx.moveTo(0, dangerY);
   ctx.lineTo(world.width, dangerY);
@@ -632,7 +615,7 @@ function render() {
   ctx.restore();
 
   ctx.save();
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.15)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
   ctx.setLineDash([8, 8]);
   ctx.beginPath();
   ctx.moveTo(0, spawnLineY);
@@ -657,19 +640,56 @@ function render() {
     ctx.restore();
   }
 
+  mergeFx = mergeFx.filter((fx) => fx.end > now);
+  for (const fx of mergeFx) {
+    const p = Math.max(0, Math.min(1, (now - fx.start) / (fx.end - fx.start)));
+    const alpha = (1 - p) * 0.55;
+    const radius = 10 + p * 42;
+    ctx.save();
+    ctx.strokeStyle = `rgba(255, 232, 140, ${alpha})`;
+    ctx.lineWidth = 5 - p * 3.2;
+    ctx.beginPath();
+    ctx.arc(fx.x, fx.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   for (const ball of balls) {
     const sprite = spriteMap.get(ball.tierId);
-    if (sprite) {
-      ctx.drawImage(
-        sprite,
-        ball.x - sprite.width / 2,
-        ball.y - sprite.height / 2
-      );
+    const pulseDuration = Math.max(1, ball.pulseEnd - ball.pulseStart);
+    const pulseT = Math.max(0, Math.min(1, (now - ball.pulseStart) / pulseDuration));
+    const pulseActive = now < ball.pulseEnd;
+    let sx = 1;
+    let sy = 1;
+    if (pulseActive) {
+      if (pulseT < 0.45) {
+        const u = pulseT / 0.45;
+        sx = 1 + u * CONFIG.merge.jellyStrength;
+        sy = 1 - u * CONFIG.merge.jellyStrength * 0.7;
+      } else {
+        const u = (pulseT - 0.45) / 0.55;
+        sx = 1 + (1 - u) * CONFIG.merge.jellyStrength * 0.35;
+        sy = 1 - (1 - u) * CONFIG.merge.jellyStrength * 0.2;
+      }
+    }
+
+    if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+      const w = ball.radius * 2;
+      const h = ball.radius * 2;
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+      ctx.scale(sx, sy);
+      ctx.drawImage(sprite, -w / 2, -h / 2, w, h);
+      ctx.restore();
     } else {
       ctx.fillStyle = "#fff";
+      ctx.save();
+      ctx.translate(ball.x, ball.y);
+      ctx.scale(sx, sy);
       ctx.beginPath();
-      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.arc(0, 0, ball.radius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
   }
 }
@@ -723,7 +743,13 @@ function onPointerDown(event) {
   pointer.y = pos.y;
   pointer.startX = pos.x;
   pointer.startY = pos.y;
+  pointer.prevX = pos.x;
+  pointer.prevY = pos.y;
+  pointer.lastX = pos.x;
+  pointer.lastY = pos.y;
   pointer.startTime = performance.now();
+  pointer.prevMoveTime = pointer.startTime;
+  pointer.lastMoveTime = pointer.startTime;
   pointer.moved = false;
   const ball = findBallAt(pos.x, pos.y);
   const dangerY = getDangerY();
@@ -737,8 +763,15 @@ function onPointerMove(event) {
   event.preventDefault();
   if (!pointer.active) return;
   const pos = getPointerPos(event);
+  const now = performance.now();
+  pointer.prevX = pointer.lastX;
+  pointer.prevY = pointer.lastY;
+  pointer.prevMoveTime = pointer.lastMoveTime;
   pointer.x = pos.x;
   pointer.y = pos.y;
+  pointer.lastX = pos.x;
+  pointer.lastY = pos.y;
+  pointer.lastMoveTime = now;
   const moved = Math.hypot(pointer.x - pointer.startX, pointer.y - pointer.startY) > 8;
   if (moved) pointer.moved = true;
 }
@@ -751,9 +784,15 @@ function onPointerUp(event) {
   if (pointer.grabbedBall && pointer.grabbedBall.isHeld) {
     const ball = pointer.grabbedBall;
     ball.isHeld = false;
-    const dx = pos.x - pointer.startX;
-    const vx = Math.max(-450, Math.min(450, (dx / Math.max(1, elapsed)) * 600));
-    ball.vx = vx;
+    const sinceLastMoveMs = performance.now() - pointer.lastMoveTime;
+    const segmentDtMs = Math.max(1, pointer.lastMoveTime - pointer.prevMoveTime);
+    const segmentDx = pointer.lastX - pointer.prevX;
+    if (sinceLastMoveMs <= 90 && Math.abs(segmentDx) >= 1.5) {
+      const vxRecent = (segmentDx / segmentDtMs) * 1000;
+      ball.vx = Math.max(-450, Math.min(450, vxRecent));
+    } else {
+      ball.vx = 0;
+    }
     ball.vy = 0;
     if (nextSpawnTimeout) clearTimeout(nextSpawnTimeout);
     nextSpawnTimeout = setTimeout(() => {
